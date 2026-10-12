@@ -1,0 +1,1 @@
+"""Yield simulator page interactions."""
