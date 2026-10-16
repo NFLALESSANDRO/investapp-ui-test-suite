@@ -1,1 +1,5 @@
-ativo,tipo,quantidade,preco_medio,data_compra
+asset_name,amount,purchase_price,days_invested,planned_days,deve_ter_sucesso
+Poupança,1500.00,1.00,31,181,True
+CDB,3000.00,1.00,91,721,True
+Ações Petrobras,5000.00,38.50,16,366,True
+Poupança,-200.00,1.00,32,182,False
