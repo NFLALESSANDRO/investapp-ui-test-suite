@@ -20,6 +20,13 @@ def gerar_prazo_planejado_unico() -> str:
     return str(next(_prazos_unicos))
 
 
+def converter_moeda_para_float(texto: str) -> float:
+    """Converte valores monetários brasileiros, como 'R$ 1.234,56', em float."""
+    valor = texto.replace("R$", "").replace("\u00a0", " ").strip()
+    valor = valor.replace(".", "").replace(",", ".").strip()
+    return float(valor)
+
+
 @pytest.fixture
 def carteira(logged_page: Page, navbar: NavbarComponent, portfolio_page: PortfolioPage):
     """Abre a aba Carteira já autenticado e remove, ao final, os aportes criados no teste."""
@@ -148,15 +155,138 @@ def test_cadastro_incrementa_quantidade_de_linhas(carteira):
 
 # ---------------------------------------------------------------------------
 # Integrante 4 — Exclusão de ativos e métricas consolidadas
+# Portfolio.jsx — US02
 # ---------------------------------------------------------------------------
 
-def test_remover_ativo_recalcula_patrimonio(logged_page: Page, navbar: NavbarComponent, portfolio_page: PortfolioPage):
-    """Valida a exclusão do primeiro ativo e conferência da redução na tabela."""
-    navbar.navegar_para_carteira()
+def test_remover_ativo_recalcula_patrimonio(carteira):
+    """Exclui um aporte criado pelo teste e valida o recálculo do patrimônio."""
+    portfolio_page, linhas_criadas = carteira
 
-    total_inicial = portfolio_page.total_de_ativos_listados()
+    dias_plan = gerar_prazo_planejado_unico()
 
-    if total_inicial > 0:
-        portfolio_page.excluir_primeiro_ativo()
-        # Aguarda a tabela re-renderizar para o novo total esperado
-        expect(portfolio_page.linhas_tabela_carteira).to_have_count(total_inicial - 1, timeout=5000)
+    # Cria um ativo exclusivo para este teste.
+    portfolio_page.cadastrar_aporte(
+        ativo="CDB",
+        quantidade="2",
+        preco="100.00",
+        dias_inv="0",
+        dias_plan=dias_plan
+    )
+
+    linha = portfolio_page.obter_linha_por_ativo_e_prazo(
+        "CDB", "0", dias_plan
+    )
+    linhas_criadas.append(linha)
+
+    expect(linha).to_be_visible(timeout=5000)
+
+    # Registra o patrimônio antes da exclusão.
+    texto_patrimonio_antes = portfolio_page.obter_texto_patrimonio_total()
+    patrimonio_antes = converter_moeda_para_float(texto_patrimonio_antes)
+    quantidade_antes = portfolio_page.total_de_ativos_listados()
+
+    # Como o aporte foi criado com 2 unidades, preço de R$ 100,00
+    # e 0 dias investidos, seu valor atual esperado é R$ 200,00.
+    valor_ativo = 2 * 100.00
+
+    # Exclui somente a linha criada pelo teste.
+    portfolio_page.excluir_linha(linha)
+
+    # Confirma que a linha foi removida da tabela.
+    expect(linha).to_have_count(0, timeout=5000)
+
+    # Valida a redução da quantidade de ativos.
+    expect(
+        portfolio_page.linhas_tabela_carteira
+    ).to_have_count(quantidade_antes - 1, timeout=5000)
+
+    # Aguarda o card ser atualizado após a exclusão.
+    expect(portfolio_page.card_patrimonio_total).not_to_have_text(
+        texto_patrimonio_antes,
+        timeout=5000
+    )
+
+    # Valida o recálculo do patrimônio total.
+    patrimonio_depois = converter_moeda_para_float(
+        portfolio_page.obter_texto_patrimonio_total()
+    )
+
+    assert patrimonio_depois == pytest.approx(
+        patrimonio_antes - valor_ativo,
+        abs=0.02
+    ), (
+        f"Patrimônio incorreto após exclusão. "
+        f"Antes: {patrimonio_antes:.2f}; "
+        f"Valor excluído: {valor_ativo:.2f}; "
+        f"Depois: {patrimonio_depois:.2f}"
+    )
+
+
+def test_exclusao_com_confirmacao_do_navegador(carteira):
+    """Verifica que o alerta nativo de confirmação é aceito ao excluir."""
+    portfolio_page, linhas_criadas = carteira
+
+    dias_plan = gerar_prazo_planejado_unico()
+
+    portfolio_page.cadastrar_aporte(
+        ativo="Poupança",
+        quantidade="1",
+        preco="50.00",
+        dias_inv="0",
+        dias_plan=dias_plan
+    )
+
+    linha = portfolio_page.obter_linha_por_ativo_e_prazo(
+        "Poupança", "0", dias_plan
+    )
+    linhas_criadas.append(linha)
+
+    expect(linha).to_be_visible(timeout=5000)
+
+    # Aceita o confirm() nativo, caso a aplicação o utilize.
+    portfolio_page.page.once(
+        "dialog",
+        lambda dialog: dialog.accept()
+    )
+
+    portfolio_page.excluir_linha(linha)
+
+    expect(linha).to_have_count(0, timeout=5000)
+
+
+def test_exclusao_nao_afeta_outros_ativos(carteira):
+    """Confirma que excluir um aporte não remove as demais linhas."""
+    portfolio_page, linhas_criadas = carteira
+
+    prazo_a = gerar_prazo_planejado_unico()
+    prazo_b = gerar_prazo_planejado_unico()
+
+    portfolio_page.cadastrar_aporte(
+        "CDB", "1", "100.00", "0", prazo_a
+    )
+    linha_a = portfolio_page.obter_linha_por_ativo_e_prazo(
+        "CDB", "0", prazo_a
+    )
+    linhas_criadas.append(linha_a)
+
+    portfolio_page.cadastrar_aporte(
+        "Poupança", "1", "200.00", "0", prazo_b
+    )
+    linha_b = portfolio_page.obter_linha_por_ativo_e_prazo(
+        "Poupança", "0", prazo_b
+    )
+    linhas_criadas.append(linha_b)
+
+    expect(linha_a).to_be_visible(timeout=5000)
+    expect(linha_b).to_be_visible(timeout=5000)
+
+    quantidade_antes = portfolio_page.total_de_ativos_listados()
+
+    portfolio_page.excluir_linha(linha_a)
+
+    expect(linha_a).to_have_count(0, timeout=5000)
+    expect(linha_b).to_be_visible(timeout=5000)
+
+    expect(
+        portfolio_page.linhas_tabela_carteira
+    ).to_have_count(quantidade_antes - 1, timeout=5000)
