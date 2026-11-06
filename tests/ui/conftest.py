@@ -4,10 +4,12 @@ from playwright.sync_api import Page, expect
 from pages.navbar_component import NavbarComponent
 from pages.login_modal_page import LoginModalPage
 from pages.portfolio_page import PortfolioPage
+from pages.tax_optimizer_page import TaxOptimizerPage
+
 
 UI_BASE_URL = os.getenv("UI_BASE_URL", "http://investapp-frontend.s3-website-us-east-1.amazonaws.com")
-TEST_USER = os.getenv("TEST_USER", "userXX")
-TEST_PASSWORD = os.getenv("TEST_PASSWORD", "password")
+TEST_USER = os.getenv("TEST_USER", "user05")
+TEST_PASSWORD = os.getenv("TEST_PASSWORD", "pJ1ORz!FqmYn")
 
 
 @pytest.fixture(scope="session")
@@ -44,3 +46,8 @@ def logged_page(page: Page, base_url: str, navbar: NavbarComponent, login_modal:
     expect(navbar.botao_sair).to_be_visible(timeout=10000)
 
     return page
+
+
+@pytest.fixture
+def tax_optimizer_page(page: Page) -> TaxOptimizerPage:
+    return TaxOptimizerPage(page)
